@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Julie & Karen Real Estate CRM</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #FAFAF8; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+const AGENTS = ["Julie", "Karen", "Both"];
+const STAGES = ["New Lead", "Contacted", "Showing", "Offer", "Under Contract", "Closed", "Lost"];
+const STAGE_COLORS = {
+  "New Lead": { bg: "#E6F1FB", text: "#185FA5", border: "#B5D4F4" },
+  "Contacted": { bg: "#EEEDFE", text: "#534AB7", border: "#CECBF6" },
+  "Showing": { bg: "#FAEEDA", text: "#854F0B", border: "#FAC775" },
+  "Offer": { bg: "#FAECE7", text: "#993C1D", border: "#F5C4B3" },
+  "Under Contract": { bg: "#EAF3DE", text: "#3B6D11", border: "#C0DD97" },
+  "Closed": { bg: "#E1F5EE", text: "#0F6E56", border: "#9FE1CB" },
+  "Lost": { bg: "#F1EFE8", text: "#5F5E5A", border: "#D3D1C7" },
+};
+const TYPES = ["Buyer", "Seller", "Buyer & Seller", "Investor", "Rental"];
+const AVATAR_COLORS = [
+  { bg: "#E6F1FB", text: "#0C447C" },
+  { bg: "#EEEDFE", text: "#3C3489" },
+  { bg: "#E1F5EE", text: "#085041" },
+  { bg: "#FAEEDA", text: "#633806" },
+  { bg: "#FAECE7", text: "#4A1B0C" },
+  { bg: "#EAF3DE", text: "#27500A" },
+  { bg: "#FBEAF0", text: "#72243E" },
+];
+const TABS = ["Dashboard", "Clients", "Calendar", "Past Clients", "Daily Briefing"];
+const today = new Date();
+const todayStr = today.toISOString().split("T")[0];
+function getInitials(name) {
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+function avatarColor(name) {
+  let h = 0;
+  for (let c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function fmtDate(d) {
+  if (!d) return "";
+  const dt = new Date(d + "T12:00:00");
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+function fmtMoney(v) {
+  if (!v) return "";
+  return "$" + Number(v).toLocaleString();
+}
+const SEED_CLIENTS = [
+  { id: "c1", name: "Sarah & Rob Chen", phone: "214-555-0182", email: "srchen@email.com", type: "Buyer", stage: "Showing", agent: "Julie", budget: "650000", notes: "Looking for 3BR in Frisco or Allen. Pre-approved.", createdAt: "2026-05-10", events: [{ id: "e1", date: "2026-05-30", time: "10:00", title: "Showing - 412 Elmwood Dr", type: "Showing" }], isPast: false },
+  { id: "c2", name: "Marcus Johnson", phone: "972-555-0344", email: "marcusj@email.com", type: "Seller", stage: "Under Contract", agent: "Karen", budget: "480000", notes: "Condo in Frisco. Closing June 15.", createdAt: "2026-04-22", events: [{ id: "e2", date: "2026-06-15", time: "09:00", title: "Closing Day - Marcus Johnson", type: "Closing" }], isPast: false },
+  { id: "c3", name: "Laura Petersen", phone: "469-555-0217", email: "lpeterson@email.com", type: "Buyer", stage: "Contacted", agent: "Julie", budget: "420000", notes: "First-time buyer. Needs pre-approval guidance.", createdAt: "2026-05-18", events: [], isPast: false },
+  { id: "c4", name: "Derek & Wanda Hill", phone: "214-555-0491", email: "hillsfamily@email.com", type: "Buyer", stage: "Offer", agent: "Karen", budget: "790000", notes: "Upsizing from Allen. Offer deadline today 5PM.", createdAt: "2026-05-20", events: [{ id: "e4", date: "2026-05-30", time: "17:00", title: "Offer Deadline - Hill Family", type: "Deadline" }], isPast: false },
+  { id: "c5", name: "Priya Sharma", phone: "972-555-0603", email: "psharma@email.com", type: "Buyer", stage: "New Lead", agent: "Julie", budget: "550000", notes: "New website lead. Has not been contacted yet.", createdAt: "2026-05-30", events: [], isPast: false },
+  { id: "c6", name: "Brandon & Kay Ellis", phone: "214-555-0728", email: "ellisfam@email.com", type: "Buyer", stage: "Closed", agent: "Karen", budget: "720000", notes: "Great referral clients. Closed Apr 2026.", createdAt: "2026-02-15", closedAt: "2026-04-18", salePrice: "718000", events: [], isPast: true },
+  { id: "c7", name: "Tamara Nguyen", phone: "469-555-0851", email: "tnguyen@email.com", type: "Seller", stage: "Closed", agent: "Julie", budget: "390000", notes: "Sold condo in Plano. Smooth transaction.", createdAt: "2025-12-10", closedAt: "2026-02-28", salePrice: "392000", events: [], isPast: true },
+  { id: "c8", name: "Ricardo Ortega", phone: "972-555-0912", email: "rortega@email.com", type: "Buyer", stage: "Closed", agent: "Karen", budget: "515000", notes: "Investment property in McKinney.", createdAt: "2025-10-01", closedAt: "2025-12-12", salePrice: "510000", events: [], isPast: true },
+];
+const emptyClient = () => ({
+  id: "", name: "", phone: "", email: "", type: "Buyer", stage: "New Lead",
+  agent: "Julie", budget: "", notes: "", createdAt: todayStr, events: [], isPast: false,
+  closedAt: "", salePrice: "",
+});
+
+const CSS = `
+  .crm-root { font-family: 'Source Sans 3', sans-serif; }
+  .crm-header { background: #1C2B1A; color: #F5F0E8; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; min-height: 60px; }
+  .crm-logo { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 600; letter-spacing: 0.03em; color: #E8D9A0; }
+  .crm-logo span { color: #8BC99A; font-size: 12px; font-family: 'Source Sans 3', sans-serif; font-weight: 400; letter-spacing: 0.12em; text-transform: uppercase; display: block; margin-top: -2px; }
+  .crm-tabs { background: #243322; display: flex; gap: 0; border-bottom: 1px solid #3a4d38; padding: 0 2rem; overflow-x: auto; }
+  .crm-tab { padding: 12px 18px; font-size: 13px; font-family: 'Source Sans 3', sans-serif; font-weight: 400; color: #9db89a; cursor: pointer; border-bottom: 2px solid transparent; letter-spacing: 0.04em; transition: all 0.15s; white-space: nowrap; background: none; border-top: none; border-left: none; border-right: none; }
+  .crm-tab:hover { color: #E8D9A0; }
+  .crm-tab.active { color: #E8D9A0; border-bottom-color: #E8D9A0; font-weight: 500; }
+  .crm-body { padding: 1.5rem 2rem 3rem; max-width: 1100px; }
+  .section-head { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 500; color: #1C2B1A; margin-bottom: 0.25rem; }
+  .section-sub { font-size: 13px; color: #6b7c6a; margin-bottom: 1.5rem; }
+  .card { background: #fff; border: 1px solid #e4e0d8; border-radius: 10px; padding: 1.25rem 1.5rem; }
+  .card-sm { background: #fff; border: 1px solid #e4e0d8; border-radius: 8px; padding: 1rem 1.25rem; }
+  .metric-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: #F5F1E8; border-radius: 8px; padding: 14px 16px; }
+  .metric .m-val { font-family: 'Playfair Display', serif; font-size: 26px; font-weight: 500; color: #1C2B1A; }
+  .metric .m-lbl { font-size: 11px; color: #7a8878; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 4px; }
+  .metric .m-note { font-size: 11px; color: #5a7a58; margin-top: 3px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 1.5rem; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .btn-primary { background: #1C2B1A; color: #E8D9A0; border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; font-family: 'Source Sans 3', sans-serif; font-weight: 500; cursor: pointer; letter-spacing: 0.04em; transition: background 0.15s; }
+  .btn-primary:hover { background: #2e4a2b; }
+  .btn-secondary { background: transparent; color: #1C2B1A; border: 1px solid #c8c0b0; border-radius: 6px; padding: 7px 16px; font-size: 13px; font-family: 'Source Sans 3', sans-serif; cursor: pointer; transition: all 0.15s; }
+  .btn-secondary:hover { background: #f0ece3; }
+  .btn-danger { background: transparent; color: #a32d2d; border: 1px solid #f09595; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-family: 'Source Sans 3', sans-serif; cursor: pointer; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; font-family: 'Source Sans 3', sans-serif; flex-shrink: 0; }
+  .avatar-lg { width: 52px; height: 52px; font-size: 16px; }
+  .stage-pill { font-size: 10px; font-weight: 600; padding: 2px 9px; border-radius: 20px; letter-spacing: 0.05em; white-space: nowrap; }
+  .client-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0ece3; cursor: pointer; transition: background 0.1s; border-radius: 4px; }
+  .client-row:last-child { border-bottom: none; }
+  .client-row:hover { background: #faf7f0; }
+  .form-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(28,43,26,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .form-modal { background: #fff; border-radius: 12px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; padding: 2rem; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+  .form-title { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 500; color: #1C2B1A; margin-bottom: 1.5rem; }
+  .form-row { margin-bottom: 14px; }
+  .form-label { font-size: 11px; font-weight: 600; color: #6b7c6a; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 5px; display: block; }
+  .form-input { width: 100%; padding: 8px 12px; border: 1px solid #d0ccc2; border-radius: 6px; font-size: 14px; font-family: 'Source Sans 3', sans-serif; color: #1a1a18; background: #fafaf8; outline: none; transition: border 0.15s; }
+  .form-input:focus { border-color: #3a6b37; }
+  select.form-input { cursor: pointer; }
+  textarea.form-input { min-height: 80px; resize: vertical; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .search-row { display: flex; gap: 10px; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+  .search-input { flex: 1; min-width: 160px; padding: 7px 12px; border: 1px solid #d0ccc2; border-radius: 6px; font-size: 13px; font-family: 'Source Sans 3', sans-serif; background: #fff; }
+  select.filter-sel { padding: 7px 10px; border: 1px solid #d0ccc2; border-radius: 6px; font-size: 12px; font-family: 'Source Sans 3', sans-serif; background: #fff; cursor: pointer; }
+  .detail-overlay { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; background: #fff; box-shadow: -8px 0 30px rgba(0,0,0,0.18); z-index: 90; overflow-y: auto; display: flex; flex-direction: column; }
+  .detail-header { background: #1C2B1A; color: #F5F0E8; padding: 1.5rem; }
+  .detail-name { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 500; margin: 10px 0 4px; }
+  .detail-meta { font-size: 12px; color: #9db89a; }
+  .detail-body { padding: 1.5rem; flex: 1; }
+  .detail-section { margin-bottom: 1.25rem; }
+  .detail-sec-title { font-size: 10px; font-weight: 600; color: #7a8878; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .info-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f0ece3; font-size: 13px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: #6b7c6a; }
+  .info-val { font-weight: 500; color: #1a1a18; text-align: right; max-width: 55%; word-break: break-word; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; }
+  .cal-daylbl { font-size: 10px; color: #9a9588; text-align: center; padding-bottom: 6px; font-weight: 600; letter-spacing: 0.05em; }
+  .cal-cell { min-height: 70px; border: 1px solid #eee8de; border-radius: 6px; padding: 4px; font-size: 11px; }
+  .cal-cell.today { border-color: #3a6b37; border-width: 2px; }
+  .cal-cell.other-month { opacity: 0.4; }
+  .cal-num { font-size: 12px; font-weight: 500; color: #4a5549; margin-bottom: 3px; }
+  .cal-num.today-num { color: #1C2B1A; font-weight: 700; }
+  .cal-event { font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pipeline-row { display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .pipe-item { flex: 1; min-width: 80px; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
+  .pipe-item:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  .pipe-num { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 500; }
+  .pipe-lbl { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; }
+  .update-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0ece3; align-items: flex-start; }
+  .update-item:last-child { border-bottom: none; }
+  .update-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: #9a9588; font-size: 14px; }
+  .agent-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 12px; letter-spacing: 0.05em; }
+  .agent-julie { background: #EEEDFE; color: #3C3489; }
+  .agent-karen { background: #E1F5EE; color: #085041; }
+  .agent-both { background: #FEF3E6; color: #7A3D0A; }
+  @media(max-width:700px) { .metric-grid{grid-template-columns:1fr 1fr} .two-col{grid-template-columns:1fr} .form-grid{grid-template-columns:1fr} .detail-overlay{width:100%} }
+`;
+
+function RealtorCRM() {
+  const [tab, setTab] = useState("Dashboard");
+  const [clients, setClients] = useState(() => {
+    try {
+      const saved = localStorage.getItem("jk_crm_clients");
+      return saved ? JSON.parse(saved) : SEED_CLIENTS;
+    } catch { return SEED_CLIENTS; }
+  });
+  const [showForm, setShowForm] = useState(false);
+  const [editClient, setEditClient] = useState(null);
+  const [formData, setFormData] = useState(emptyClient());
+  const [search, setSearch] = useState("");
+  const [filterStage, setFilterStage] = useState("All");
+  const [filterAgent, setFilterAgent] = useState("All");
+  const [calMonth, setCalMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [eventClient, setEventClient] = useState(null);
+  const [eventData, setEventData] = useState({ date: todayStr, time: "10:00", title: "", type: "Showing" });
+  const [detailClient, setDetailClient] = useState(null);
+
+  const saveToStorage = useCallback((list) => {
+    try { localStorage.setItem("jk_crm_clients", JSON.stringify(list)); } catch {}
+  }, []);
+
+  const upsertClient = (c) => {
+    let list;
+    if (c.id) {
+      list = clients.map(x => x.id === c.id ? c : x);
+    } else {
+      const nc = { ...c, id: "c" + Date.now() };
+      list = [nc, ...clients];
+    }
+    setClients(list);
+    saveToStorage(list);
+  };
+  const deleteClient = (id) => {
+    const list = clients.filter(x => x.id !== id);
+    setClients(list);
+    saveToStorage(list);
+    if (detailClient?.id === id) setDetailClient(null);
+  };
+  const openAdd = () => { setFormData(emptyClient()); setEditClient(null); setShowForm(true); };
+  const openEdit = (c) => { setFormData({ ...c }); setEditClient(c); setShowForm(true); };
+  const submitForm = () => {
+    if (!formData.name.trim()) return;
+    const isPast = formData.stage === "Closed" || formData.stage === "Lost";
+    upsertClient({ ...formData, isPast });
+    setShowForm(false);
+    if (detailClient?.id === formData.id) setDetailClient({ ...formData, isPast });
+  };
+  const addEvent = () => {
+    if (!eventData.title || !eventClient) return;
+    const ev = { ...eventData, id: "ev" + Date.now() };
+    const updated = { ...eventClient, events: [...(eventClient.events || []), ev] };
+    upsertClient(updated);
+    if (detailClient?.id === eventClient.id) setDetailClient(updated);
+    setShowEventForm(false);
+  };
+  const removeEvent = (clientId, evId) => {
+    const c = clients.find(x => x.id === clientId);
+    if (!c) return;
+    const updated = { ...c, events: c.events.filter(e => e.id !== evId) };
+    upsertClient(updated);
+    if (detailClient?.id === clientId) setDetailClient(updated);
+  };
+  const activeClients = clients.filter(c => !c.isPast);
+  const pastClients = clients.filter(c => c.isPast);
+  const todayEvents = clients.flatMap(c => (c.events || []).filter(e => e.date === todayStr).map(e => ({ ...e, clientName: c.name, clientId: c.id })));
+  const upcomingEvents = clients.flatMap(c => (c.events || []).filter(e => e.date > todayStr).map(e => ({ ...e, clientName: c.name, clientId: c.id }))).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
+  const overdueFollowUp = activeClients.filter(c => {
+    const daysSince = (new Date() - new Date(c.createdAt + "T12:00:00")) / 86400000;
+    return c.stage === "New Lead" && daysSince >= 1;
+  });
+  const newLeads = activeClients.filter(c => c.stage === "New Lead");
+  const totalClosed = pastClients.filter(c => c.stage === "Closed").length;
+  const totalClosedVal = pastClients.filter(c => c.stage === "Closed" && c.salePrice).reduce((s, c) => s + Number(c.salePrice), 0);
+
+  return (
+    <div style={{ fontFamily: "'Source Sans 3', sans-serif", minHeight: "100vh", background: "#FAFAF8", color: "#1a1a18" }}>
+      <style>{CSS}</style>
+      <div className="crm-root">
+        <div className="crm-header">
+          <div className="crm-logo">Julie & Karen<span>Real Estate Partners · Plano, TX</span></div>
+          <div style={{ fontSize: 11, color: "#8BC99A" }}>● Live</div>
+        </div>
+        <div className="crm-tabs">
+          {TABS.map(t => (
+            <button key={t} className={`crm-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>{t}</button>
+          ))}
+        </div>
+        <div className="crm-body">
+          {tab === "Dashboard" && <Dashboard clients={clients} activeClients={activeClients} pastClients={pastClients} todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} totalClosed={totalClosed} totalClosedVal={totalClosedVal} openAdd={openAdd} setTab={setTab} setDetailClient={setDetailClient} setFilterStage={setFilterStage} />}
+          {tab === "Clients" && <ClientsTab clients={activeClients} search={search} setSearch={setSearch} filterStage={filterStage} setFilterStage={setFilterStage} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openAdd={openAdd} openEdit={openEdit} deleteClient={deleteClient} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} />}
+          {tab === "Calendar" && <CalendarTab clients={clients} calMonth={calMonth} setCalMonth={setCalMonth} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} removeEvent={removeEvent} />}
+          {tab === "Past Clients" && <PastClientsTab clients={pastClients} search={search} setSearch={setSearch} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openEdit={openEdit} setDetailClient={setDetailClient} />}
+          {tab === "Daily Briefing" && <DailyBriefing todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} activeClients={activeClients} setDetailClient={setDetailClient} setTab={setTab} />}
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="form-overlay" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+          <div className="form-modal">
+            <div className="form-title">{editClient ? "Edit Client" : "Add New Client"}</div>
+            <div className="form-grid">
+              <div className="form-row">
+                <label className="form-label">Full Name *</label>
+                <input className="form-input" value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} placeholder="Client name(s)" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Assigned Agent</label>
+                <select className="form-input" value={formData.agent} onChange={e => setFormData(p => ({ ...p, agent: e.target.value }))}>
+                  {AGENTS.map(a => <option key={a}>{a}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Phone</label>
+                <input className="form-input" value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))} placeholder="214-555-0000" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Email</label>
+                <input className="form-input" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="client@email.com" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Client Type</label>
+                <select className="form-input" value={formData.type} onChange={e => setFormData(p => ({ ...p, type: e.target.value }))}>
+                  {TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Stage</label>
+                <select className="form-input" value={formData.stage} onChange={e => setFormData(p => ({ ...p, stage: e.target.value }))}>
+                  {STAGES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Budget / List Price</label>
+                <input className="form-input" value={formData.budget} onChange={e => setFormData(p => ({ ...p, budget: e.target.value }))} placeholder="500000" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Date Added</label>
+                <input className="form-input" type="date" value={formData.createdAt} onChange={e => setFormData(p => ({ ...p, createdAt: e.target.value }))} />
+              </div>
+              {formData.stage === "Closed" && <>
+                <div className="form-row">
+                  <label className="form-label">Close Date</label>
+                  <input className="form-input" type="date" value={formData.closedAt} onChange={e => setFormData(p => ({ ...p, closedAt: e.target.value }))} />
+                </div>
+                <div className="form-row">
+                  <label className="form-label">Sale Price</label>
+                  <input className="form-input" value={formData.salePrice} onChange={e => setFormData(p => ({ ...p, salePrice: e.target.value }))} placeholder="500000" />
+                </div>
+              </>}
+            </div>
+            <div className="form-row">
+              <label className="form-label">Notes</label>
+              <textarea className="form-input" value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} placeholder="Property preferences, pre-approval status, important details…" />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <button className="btn-primary" onClick={submitForm}>{editClient ? "Save Changes" : "Add Client"}</button>
+              <button className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEventForm && eventClient && (
+        <div className="form-overlay" onClick={e => e.target === e.currentTarget && setShowEventForm(false)}>
+          <div className="form-modal" style={{ maxWidth: 400 }}>
+            <div className="form-title">Add Event</div>
+            <div style={{ fontSize: 13, color: "#6b7c6a", marginBottom: 16 }}>For: <strong>{eventClient.name}</strong></div>
+            <div className="form-row">
+              <label className="form-label">Event Title</label>
+              <input className="form-input" value={eventData.title} onChange={e => setEventData(p => ({ ...p, title: e.target.value }))} placeholder="Showing, meeting, deadline…" />
+            </div>
+            <div className="form-grid">
+              <div className="form-row">
+                <label className="form-label">Date</label>
+                <input className="form-input" type="date" value={eventData.date} onChange={e => setEventData(p => ({ ...p, date: e.target.value }))} />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Time</label>
+                <input className="form-input" type="time" value={eventData.time} onChange={e => setEventData(p => ({ ...p, time: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row">
+              <label className="form-label">Type</label>
+              <select className="form-input" value={eventData.type} onChange={e => setEventData(p => ({ ...p, type: e.target.value }))}>
+                {["Showing", "Meeting", "Open House", "Closing", "Deadline", "Follow-up", "Other"].map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <button className="btn-primary" onClick={addEvent}>Add Event</button>
+              <button className="btn-secondary" onClick={() => setShowEventForm(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailClient && (
+        <div className="detail-overlay">
+          <div className="detail-header">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                {(() => { const av = avatarColor(detailClient.name); return <div className="avatar avatar-lg" style={{ background: av.bg, color: av.text }}>{getInitials(detailClient.name)}</div>; })()}
+                <div className="detail-name">{detailClient.name}</div>
+                <div className="detail-meta">{detailClient.type} · Added {fmtDate(detailClient.createdAt)}</div>
+              </div>
+              <button onClick={() => setDetailClient(null)} style={{ background: "none", border: "none", color: "#9db89a", fontSize: 22, cursor: "pointer" }}>×</button>
+            </div>
+          </div>
+          <div className="detail-body">
+            <div className="detail-section">
+              <div className="detail-sec-title">Contact</div>
+              <div className="info-row"><span className="info-key">Phone</span><span className="info-val">{detailClient.phone || "—"}</span></div>
+              <div className="info-row"><span className="info-key">Email</span><span className="info-val" style={{ fontSize: 12 }}>{detailClient.email || "—"}</span></div>
+              <div className="info-row"><span className="info-key">Agent</span><span className="info-val"><span className={`agent-badge agent-${detailClient.agent.toLowerCase()}`}>{detailClient.agent}</span></span></div>
+            </div>
+            <div className="detail-section">
+              <div className="detail-sec-title">Deal Info</div>
+              <div className="info-row"><span className="info-key">Stage</span><span className="info-val">{(() => { const s = STAGE_COLORS[detailClient.stage]; return <span className="stage-pill" style={{ background: s.bg, color: s.text }}>{detailClient.stage}</span>; })()}</span></div>
+              <div className="info-row"><span className="info-key">Budget</span><span className="info-val">{fmtMoney(detailClient.budget) || "—"}</span></div>
+              {detailClient.salePrice && <div className="info-row"><span className="info-key">Sale Price</span><span className="info-val">{fmtMoney(detailClient.salePrice)}</span></div>}
+              {detailClient.closedAt && <div className="info-row"><span className="info-key">Closed</span><span className="info-val">{fmtDate(detailClient.closedAt)}</span></div>}
+            </div>
+            {detailClient.notes && (
+              <div className="detail-section">
+                <div className="detail-sec-title">Notes</div>
+                <div style={{ fontSize: 13, color: "#3a3a38", lineHeight: 1.6, background: "#faf7f0", borderRadius: 6, padding: "10px 12px" }}>{detailClient.notes}</div>
+              </div>
+            )}
+            <div className="detail-section">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div className="detail-sec-title" style={{ marginBottom: 0 }}>Events & Appointments</div>
+                <button className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => { setEventClient(detailClient); setEventData({ date: todayStr, time: "10:00", title: "", type: "Showing" }); setShowEventForm(true); }}>+ Add</button>
+              </div>
+              {(!detailClient.events || detailClient.events.length === 0) && <div style={{ fontSize: 12, color: "#9a9588" }}>No events scheduled.</div>}
+              {(detailClient.events || []).sort((a, b) => a.date.localeCompare(b.date)).map(ev => (
+                <div key={ev.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f0ece3", fontSize: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{ev.title}</div>
+                    <div style={{ color: "#6b7c6a" }}>{fmtDate(ev.date)} {ev.time && `· ${ev.time}`} · {ev.type}</div>
+                  </div>
+                  <button onClick={() => removeEvent(detailClient.id, ev.id)} style={{ background: "none", border: "none", color: "#c0a080", fontSize: 16, cursor: "pointer" }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, paddingTop: 12 }}>
+              <button className="btn-primary" onClick={() => openEdit(detailClient)}>Edit</button>
+              <button className="btn-danger" onClick={() => { if (window.confirm("Delete this client?")) deleteClient(detailClient.id); }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Dashboard({ clients, activeClients, pastClients, todayEvents, upcomingEvents, overdueFollowUp, newLeads, totalClosed, totalClosedVal, openAdd, setTab, setDetailClient, setFilterStage }) {
+  const stageCount = (s) => activeClients.filter(c => c.stage === s).length;
+  return (
+    <div>
+      <div className="section-head">Good morning, Julie & Karen!</div>
+      <div className="section-sub">{new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} · Plano, TX</div>
+      <div className="metric-grid">
+        <div className="metric" style={{ cursor: "pointer" }} onClick={() => { setFilterStage("All"); setTab("Clients"); }}><div className="m-lbl">Active Clients</div><div className="m-val">{activeClients.length}</div><div className="m-note">Across all stages</div></div>
+        <div className="metric" style={{ cursor: "pointer" }} onClick={() => { setFilterStage("New Lead"); setTab("Clients"); }}><div className="m-lbl">New Leads</div><div className="m-val">{newLeads.length}</div><div className="m-note">{overdueFollowUp.length} need follow-up</div></div>
+        <div className="metric" style={{ cursor: "pointer" }} onClick={() => setTab("Calendar")}><div className="m-lbl">Today's Events</div><div className="m-val">{todayEvents.length}</div><div className="m-note">{todayEvents.length === 0 ? "Clear schedule" : todayEvents[0]?.title?.slice(0, 20)}</div></div>
+        <div className="metric" style={{ cursor: "pointer" }} onClick={() => setTab("Past Clients")}><div className="m-lbl">Total Closed</div><div className="m-val">{totalClosed}</div><div className="m-note">{fmtMoney(totalClosedVal)} in volume</div></div>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#4a5549", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Pipeline</div>
+      <div className="pipeline-row">
+        {["New Lead", "Contacted", "Showing", "Offer", "Under Contract"].map(s => {
+          const sc = STAGE_COLORS[s];
+          return (
+            <div key={s} className="pipe-item" style={{ background: sc.bg, border: `1px solid ${sc.border}` }} onClick={() => { setFilterStage(s); setTab("Clients"); }}>
+              <div className="pipe-num" style={{ color: sc.text }}>{stageCount(s)}</div>
+              <div className="pipe-lbl" style={{ color: sc.text }}>{s}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="two-col">
+        <div className="card">
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500, marginBottom: 12 }}>Today's Activity</div>
+          {todayEvents.length === 0 && overdueFollowUp.length === 0 && <div className="empty-state" style={{ padding: "1.5rem" }}>No events or urgent tasks today.</div>}
+          {overdueFollowUp.slice(0, 3).map(c => (
+            <div key={c.id} className="update-item">
+              <div className="update-dot" style={{ background: "#FAEEDA", color: "#854F0B" }}>!</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Follow up with {c.name}</div>
+                <div style={{ fontSize: 11, color: "#9a9588" }}>New lead · {c.agent} · Added {fmtDate(c.createdAt)}</div>
+              </div>
+              <button style={{ fontSize: 11, padding: "3px 8px", background: "none", border: "1px solid #d0ccc2", borderRadius: 5, cursor: "pointer" }} onClick={() => setDetailClient(c)}>View</button>
+            </div>
+          ))}
+          {todayEvents.map(ev => (
+            <div key={ev.id} className="update-item">
+              <div className="update-dot" style={{ background: "#E6F1FB", color: "#185FA5" }}>📅</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{ev.title}</div>
+                <div style={{ fontSize: 11, color: "#9a9588" }}>{ev.clientName} · {ev.time}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 500 }}>Recent Clients</div>
+            <button className="btn-primary" style={{ fontSize: 11, padding: "5px 12px" }} onClick={openAdd}>+ Add Client</button>
+          </div>
+          {activeClients.slice(0, 5).map(c => {
+            const av = avatarColor(c.name);
+            const sc = STAGE_COLORS[c.stage];
+            return (
+              <div key={c.id} className="client-row" onClick={() => setDetailClient(c)}>
+                <div className="avatar" style={{ background: av.bg, color: av.text }}>{getInitials(c.name)}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: "#9a9588" }}>{c.type} · {c.agent}</div>
+                </div>
+                <span className="stage-pill" style={{ background: sc.bg, color: sc.text }}>{c.stage}</span>
+              </div>
+            );
+          })}
+          <div style={{ marginTop: 12 }}><button className="btn-secondary" style={{ width: "100%", fontSize: 12 }} onClick={() => setTab("Clients")}>View all clients →</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientsTab({ clients, search, setSearch, filterStage, setFilterStage, filterAgent, setFilterAgent, openAdd, openEdit, deleteClient, setDetailClient, setEventClient, setShowEventForm }) {
+  const filtered = clients.filter(c => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || c.phone?.includes(q);
+    const matchStage = filterStage === "All" || c.stage === filterStage;
+    const matchAgent = filterAgent === "All" || c.agent === filterAgent;
+    return matchSearch && matchStage && matchAgent;
+  });
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+        <div><div className="section-head">Clients</div><div className="section-sub">{clients.length} active clients</div></div>
+        <button className="btn-primary" onClick={openAdd}>+ Add Client</button>
+      </div>
+      <div className="search-row">
+        <input className="search-input" placeholder="Search by name, email, phone…" value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="filter-sel" value={filterStage} onChange={e => setFilterStage(e.target.value)}>
+          <option value="All">All stages</option>
+          {STAGES.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select className="filter-sel" value={filterAgent} onChange={e => setFilterAgent(e.target.value)}>
+          <option value="All">All agents</option>
+          {AGENTS.map(a => <option key={a}>{a}</option>)}
+        </select>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        {filtered.length === 0 && <div className="empty-state">No clients found.</div>}
+        {filtered.map((c, i) => {
+          const av = avatarColor(c.name);
+          const sc = STAGE_COLORS[c.stage];
+          return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: i < filtered.length - 1 ? "1px solid #f0ece3" : "none", cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#faf7f0"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}
+              onClick={() => setDetailClient(c)}>
+              <div className="avatar" style={{ background: av.bg, color: av.text }}>{getInitials(c.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: "#9a9588" }}>{c.phone || c.email || "—"} · {c.type}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                <span className={`agent-badge agent-${c.agent.toLowerCase()}`}>{c.agent}</span>
+                <span className="stage-pill" style={{ background: sc.bg, color: sc.text }}>{c.stage}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "#4a5a48", minWidth: 80, textAlign: "right" }}>{fmtMoney(c.budget)}</span>
+                <button style={{ background: "none", border: "none", fontSize: 13, color: "#9a9588", cursor: "pointer", padding: "2px 6px" }} onClick={e => { e.stopPropagation(); openEdit(c); }}>✏️</button>
+                <button style={{ background: "none", border: "none", fontSize: 13, color: "#c0a080", cursor: "pointer", padding: "2px 6px" }} onClick={e => { e.stopPropagation(); setEventClient(c); setShowEventForm(true); }}>📅</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CalendarTab({ clients, calMonth, setCalMonth, setDetailClient, setEventClient, setShowEventForm, removeEvent }) {
+  const year = calMonth.getFullYear();
+  const month = calMonth.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrev = new Date(year, month, 0).getDate();
+  const allEvents = clients.flatMap(c => (c.events || []).map(e => ({ ...e, clientName: c.name, clientId: c.id })));
+  const eventsOnDay = (d) => {
+    const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    return allEvents.filter(e => e.date === ds);
+  };
+  const eventTypeColor = (type) => ({ Showing: "#E6F1FB", Closing: "#E1F5EE", Deadline: "#FAECE7", Meeting: "#EEEDFE", "Open House": "#FAEEDA", "Follow-up": "#F1EFE8" }[type] || "#F1EFE8");
+  const eventTypeText = (type) => ({ Showing: "#185FA5", Closing: "#0F6E56", Deadline: "#993C1D", Meeting: "#534AB7", "Open House": "#854F0B", "Follow-up": "#5F5E5A" }[type] || "#5F5E5A");
+  const cells = [];
+  for (let i = firstDay - 1; i >= 0; i--) cells.push({ day: daysInPrev - i, curr: false });
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, curr: true });
+  const remaining = 42 - cells.length;
+  for (let d = 1; d <= remaining; d++) cells.push({ day: d, curr: false });
+  const upcomingAll = allEvents.filter(e => e.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10);
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+        <div><div className="section-head">Calendar</div><div className="section-sub">{calMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div></div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-secondary" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>← Prev</button>
+          <button className="btn-secondary" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>Next →</button>
+        </div>
+      </div>
+      <div className="two-col" style={{ gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+        <div className="card" style={{ padding: "1rem" }}>
+          <div className="cal-grid">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => <div key={d} className="cal-daylbl">{d}</div>)}
+            {cells.map((cell, i) => {
+              const isToday = cell.curr && new Date(year, month, cell.day).toISOString().split("T")[0] === todayStr;
+              const evs = cell.curr ? eventsOnDay(cell.day) : [];
+              return (
+                <div key={i} className={`cal-cell${isToday ? " today" : ""}${!cell.curr ? " other-month" : ""}`}>
+                  <div className={`cal-num${isToday ? " today-num" : ""}`}>{cell.day}</div>
+                  {evs.slice(0, 3).map(ev => (
+                    <div key={ev.id} className="cal-event" style={{ background: eventTypeColor(ev.type), color: eventTypeText(ev.type) }} title={ev.title + " · " + ev.clientName}>
+                      {ev.time && ev.time + " "}{ev.title}
+                    </div>
+                  ))}
+                  {evs.length > 3 && <div style={{ fontSize: 9, color: "#9a9588" }}>+{evs.length - 3} more</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <div className="card-sm" style={{ marginBottom: 12 }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, marginBottom: 10 }}>Upcoming Events</div>
+            {upcomingAll.length === 0 && <div style={{ fontSize: 12, color: "#9a9588" }}>No upcoming events.</div>}
+            {upcomingAll.map(ev => (
+              <div key={ev.id} style={{ padding: "7px 0", borderBottom: "1px solid #f0ece3", fontSize: 12 }}>
+                <div style={{ fontWeight: 500 }}>{ev.title}</div>
+                <div style={{ color: "#9a9588" }}>{fmtDate(ev.date)} {ev.time && `· ${ev.time}`}</div>
+                <div style={{ color: "#6b7c6a" }}>{ev.clientName}</div>
+              </div>
+            ))}
+          </div>
+          <div className="card-sm">
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, marginBottom: 10 }}>Add Event</div>
+            <div style={{ fontSize: 12, color: "#6b7c6a" }}>Select a client from the Clients tab to add an event.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PastClientsTab({ clients, search, setSearch, filterAgent, setFilterAgent, openEdit, setDetailClient }) {
+  const filtered = clients.filter(c => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q);
+    const matchAgent = filterAgent === "All" || c.agent === filterAgent;
+    return matchSearch && matchAgent;
+  });
+  const totalVol = filtered.filter(c => c.salePrice).reduce((s, c) => s + Number(c.salePrice), 0);
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+        <div><div className="section-head">Past Clients</div><div className="section-sub">{filtered.length} closed deals · {fmtMoney(totalVol)} in volume</div></div>
+      </div>
+      <div className="search-row">
+        <input className="search-input" placeholder="Search past clients…" value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="filter-sel" value={filterAgent} onChange={e => setFilterAgent(e.target.value)}>
+          <option value="All">All agents</option>
+          {AGENTS.map(a => <option key={a}>{a}</option>)}
+        </select>
+      </div>
+      <div className="card" style={{ padding: 0 }}>
+        {filtered.length === 0 && <div className="empty-state">No past clients found.</div>}
+        {filtered.map((c, i) => {
+          const av = avatarColor(c.name);
+          const sc = STAGE_COLORS[c.stage];
+          return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: i < filtered.length - 1 ? "1px solid #f0ece3" : "none", cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#faf7f0"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}
+              onClick={() => setDetailClient(c)}>
+              <div className="avatar" style={{ background: av.bg, color: av.text }}>{getInitials(c.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: "#9a9588" }}>{c.type} · {c.agent} {c.closedAt && `· Closed ${fmtDate(c.closedAt)}`}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                <span className={`agent-badge agent-${c.agent.toLowerCase()}`}>{c.agent}</span>
+                <span className="stage-pill" style={{ background: sc.bg, color: sc.text }}>{c.stage}</span>
+                {c.salePrice && <span style={{ fontSize: 13, fontWeight: 600, color: "#3B6D11", minWidth: 90, textAlign: "right" }}>{fmtMoney(c.salePrice)}</span>}
+                <button style={{ background: "none", border: "none", fontSize: 13, color: "#9a9588", cursor: "pointer", padding: "2px 6px" }} onClick={e => { e.stopPropagation(); openEdit(c); }}>✏️</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DailyBriefing({ todayEvents, upcomingEvents, overdueFollowUp, newLeads, activeClients, setDetailClient, setTab }) {
+  const uncontacted = newLeads.filter(c => (new Date() - new Date(c.createdAt + "T12:00:00")) / 86400000 >= 0.5);
+  return (
+    <div>
+      <div className="section-head">Daily Briefing</div>
+      <div className="section-sub">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
+      <div className="three-col" style={{ marginBottom: "1.5rem" }}>
+        <div className="metric"><div className="m-lbl">Today's Events</div><div className="m-val">{todayEvents.length}</div></div>
+        <div className="metric"><div className="m-lbl">Need Follow-up</div><div className="m-val">{overdueFollowUp.length}</div></div>
+        <div className="metric"><div className="m-lbl">Uncontacted Leads</div><div className="m-val">{uncontacted.length}</div></div>
+      </div>
+      {todayEvents.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, marginBottom: 12 }}>📅 Today's Schedule</div>
+          {todayEvents.map(ev => (
+            <div key={ev.id} className="update-item">
+              <div className="update-dot" style={{ background: "#E6F1FB", color: "#185FA5", fontSize: 11 }}>{ev.time}</div>
+              <div><div style={{ fontSize: 13, fontWeight: 500 }}>{ev.title}</div><div style={{ fontSize: 11, color: "#9a9588" }}>{ev.clientName} · {ev.type}</div></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {overdueFollowUp.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, marginBottom: 12, color: "#993C1D" }}>⚠️ Needs Follow-up</div>
+          {overdueFollowUp.map(c => (
+            <div key={c.id} className="update-item">
+              <div className="update-dot" style={{ background: "#FAEEDA", color: "#854F0B" }}>!</div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</div><div style={{ fontSize: 11, color: "#9a9588" }}>{c.agent} · New Lead · Added {fmtDate(c.createdAt)}</div></div>
+              <button style={{ fontSize: 11, padding: "3px 8px", background: "none", border: "1px solid #d0ccc2", borderRadius: 5, cursor: "pointer" }} onClick={() => { setDetailClient(c); setTab("Clients"); }}>View →</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {upcomingEvents.slice(0, 5).length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, marginBottom: 12 }}>🗓 Upcoming Events</div>
+          {upcomingEvents.slice(0, 5).map(ev => (
+            <div key={ev.id} className="update-item">
+              <div className="update-dot" style={{ background: "#EAF3DE", color: "#3B6D11", fontSize: 10, fontWeight: 600 }}>{new Date(ev.date + "T12:00:00").getDate()}</div>
+              <div><div style={{ fontSize: 13, fontWeight: 500 }}>{ev.title}</div><div style={{ fontSize: 11, color: "#9a9588" }}>{ev.clientName} · {fmtDate(ev.date)} {ev.time && `· ${ev.time}`}</div></div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="card">
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, marginBottom: 12 }}>📊 Pipeline Summary</div>
+        {["New Lead", "Contacted", "Showing", "Offer", "Under Contract"].map(s => {
+          const count = activeClients.filter(c => c.stage === s).length;
+          const sc = STAGE_COLORS[s];
+          return (
+            <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f0ece3", fontSize: 13 }}>
+              <span className="stage-pill" style={{ background: sc.bg, color: sc.text }}>{s}</span>
+              <span style={{ fontWeight: 600 }}>{count} client{count !== 1 ? "s" : ""}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<RealtorCRM />);
+  </script>
+</body>
+</html>

@@ -7,6 +7,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
@@ -159,7 +160,15 @@ const CSS = `
   .agent-julie { background: #EEEDFE; color: #3C3489; }
   .agent-karen { background: #E1F5EE; color: #085041; }
   .agent-both { background: #FEF3E6; color: #7A3D0A; }
-  @media(max-width:700px) { .metric-grid{grid-template-columns:1fr 1fr} .two-col{grid-template-columns:1fr} .form-grid{grid-template-columns:1fr} .detail-overlay{width:100%} }
+  .scan-modal { max-width: 700px; }
+  .scan-preview { width: 100%; max-height: 260px; object-fit: contain; border-radius: 8px; border: 1px solid #e4e0d8; margin-bottom: 14px; background: #f5f1e8; }
+  .scan-progress { height: 6px; background: #e4e0d8; border-radius: 3px; overflow: hidden; margin: 12px 0; }
+  .scan-progress-bar { height: 100%; background: #3a6b37; border-radius: 3px; transition: width 0.3s; }
+  .scan-row { display: grid; grid-template-columns: 24px 1fr 1fr 1fr 1fr; gap: 8px; align-items: center; padding: 8px 4px; border-bottom: 1px solid #f0ece3; }
+  .scan-row:nth-child(even) { background: #faf7f0; border-radius: 4px; }
+  .scan-row input { padding: 5px 8px; border: 1px solid #d0ccc2; border-radius: 5px; font-size: 12px; font-family: 'Source Sans 3', sans-serif; width: 100%; background: #fff; }
+  .scan-header { display: grid; grid-template-columns: 24px 1fr 1fr 1fr 1fr; gap: 8px; padding: 4px 4px 8px; font-size: 10px; font-weight: 600; color: #6b7c6a; letter-spacing: 0.07em; text-transform: uppercase; border-bottom: 2px solid #e4e0d8; margin-bottom: 4px; }
+  @media(max-width:700px) { .metric-grid{grid-template-columns:1fr 1fr} .two-col{grid-template-columns:1fr} .form-grid{grid-template-columns:1fr} .detail-overlay{width:100%} .scan-row{grid-template-columns:24px 1fr 1fr} }
 `;
 
 function RealtorCRM() {
@@ -181,6 +190,11 @@ function RealtorCRM() {
   const [eventClient, setEventClient] = useState(null);
   const [eventData, setEventData] = useState({ date: todayStr, time: "10:00", title: "", type: "Showing", selectedClientId: "" });
   const [detailClient, setDetailClient] = useState(null);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanImage, setScanImage] = useState(null);
+  const [scanStatus, setScanStatus] = useState("idle");
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanResults, setScanResults] = useState([]);
   const [contractors, setContractors] = useState(() => {
     try {
       const saved = localStorage.getItem("jk_crm_contractors");
@@ -312,7 +326,7 @@ function RealtorCRM() {
         </div>
         <div className="crm-body">
           {tab === "Dashboard" && <Dashboard clients={clients} activeClients={activeClients} pastClients={pastClients} todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} totalClosed={totalClosed} totalClosedVal={totalClosedVal} openAdd={openAdd} setTab={setTab} setDetailClient={setDetailClient} setFilterStage={setFilterStage} />}
-          {tab === "Clients" && <ClientsTab clients={activeClients} search={search} setSearch={setSearch} filterStage={filterStage} setFilterStage={setFilterStage} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openAdd={openAdd} openEdit={openEdit} deleteClient={deleteClient} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} />}
+          {tab === "Clients" && <ClientsTab clients={activeClients} search={search} setSearch={setSearch} filterStage={filterStage} setFilterStage={setFilterStage} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openAdd={openAdd} openEdit={openEdit} deleteClient={deleteClient} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} openScan={() => { setScanImage(null); setScanStatus("idle"); setScanResults([]); setScanProgress(0); setShowScanModal(true); }} />}
           {tab === "Calendar" && <CalendarTab clients={clients} calMonth={calMonth} setCalMonth={setCalMonth} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} removeEvent={removeEvent} calEvents={calEvents} removeCalEvent={removeCalEvent} openAddEvent={() => { setEventClient(null); setEventData({ date: todayStr, time: "10:00", title: "", type: "Showing", selectedClientId: "" }); setShowEventForm(true); }} />}
           {tab === "Past Clients" && <PastClientsTab clients={pastClients} search={search} setSearch={setSearch} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openEdit={openEdit} setDetailClient={setDetailClient} />}
           {tab === "Daily Briefing" && <DailyBriefing todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} activeClients={activeClients} setDetailClient={setDetailClient} setTab={setTab} />}
@@ -426,6 +440,22 @@ function RealtorCRM() {
             </div>
           </div>
         </div>
+      )}
+
+      {showScanModal && (
+        <ScanModal
+          onClose={() => setShowScanModal(false)}
+          scanImage={scanImage} setScanImage={setScanImage}
+          scanStatus={scanStatus} setScanStatus={setScanStatus}
+          scanProgress={scanProgress} setScanProgress={setScanProgress}
+          scanResults={scanResults} setScanResults={setScanResults}
+          onImport={(rows) => {
+            rows.forEach(r => {
+              upsertClient({ ...emptyClient(), name: r.name, phone: r.phone, email: r.email, notes: r.comments });
+            });
+            setShowScanModal(false);
+          }}
+        />
       )}
 
       {showContractorForm && (
@@ -607,7 +637,7 @@ function Dashboard({ clients, activeClients, pastClients, todayEvents, upcomingE
   );
 }
 
-function ClientsTab({ clients, search, setSearch, filterStage, setFilterStage, filterAgent, setFilterAgent, openAdd, openEdit, deleteClient, setDetailClient, setEventClient, setShowEventForm }) {
+function ClientsTab({ clients, search, setSearch, filterStage, setFilterStage, filterAgent, setFilterAgent, openAdd, openEdit, deleteClient, setDetailClient, setEventClient, setShowEventForm, openScan }) {
   const filtered = clients.filter(c => {
     const q = search.toLowerCase();
     const matchSearch = !q || c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || c.phone?.includes(q);
@@ -619,7 +649,10 @@ function ClientsTab({ clients, search, setSearch, filterStage, setFilterStage, f
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
         <div><div className="section-head">Clients</div><div className="section-sub">{clients.length} active clients</div></div>
-        <button className="btn-primary" onClick={openAdd}>+ Add Client</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-secondary" onClick={openScan}>📷 Scan Sign-in Sheet</button>
+          <button className="btn-primary" onClick={openAdd}>+ Add Client</button>
+        </div>
       </div>
       <div className="search-row">
         <input className="search-input" placeholder="Search by name, email, phone…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -847,6 +880,124 @@ function DailyBriefing({ todayEvents, upcomingEvents, overdueFollowUp, newLeads,
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function parseOcrText(text) {
+  const emailRe = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+  const phoneRe = /\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/g;
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 2);
+  const results = [];
+  for (const line of lines) {
+    const emails = line.match(emailRe) || [];
+    const phones = line.match(phoneRe) || [];
+    let rest = line;
+    emails.forEach(e => { rest = rest.replace(e, " "); });
+    phones.forEach(p => { rest = rest.replace(p, " "); });
+    const tokens = rest.split(/\s{2,}|\t/).map(t => t.trim()).filter(Boolean);
+    const name = tokens[0] || "";
+    const comments = tokens.slice(1).join(" ").trim();
+    if (!name && !emails[0] && !phones[0]) continue;
+    results.push({ id: "scan" + Date.now() + Math.random(), name, email: emails[0] || "", phone: phones[0] || "", comments, selected: true });
+  }
+  return results;
+}
+
+function ScanModal({ onClose, scanImage, setScanImage, scanStatus, setScanStatus, scanProgress, setScanProgress, scanResults, setScanResults, onImport }) {
+  const fileRef = React.useRef();
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { setScanImage(ev.target.result); setScanStatus("idle"); setScanResults([]); };
+    reader.readAsDataURL(file);
+  };
+  const runOcr = async () => {
+    if (!scanImage) return;
+    setScanStatus("scanning");
+    setScanProgress(0);
+    try {
+      const result = await Tesseract.recognize(scanImage, "eng", {
+        logger: m => { if (m.status === "recognizing text") setScanProgress(Math.round(m.progress * 100)); }
+      });
+      const parsed = parseOcrText(result.data.text);
+      setScanResults(parsed);
+      setScanStatus("done");
+    } catch {
+      setScanStatus("error");
+    }
+  };
+  const updateRow = (id, field, val) => setScanResults(prev => prev.map(r => r.id === id ? { ...r, [field]: val } : r));
+  const toggleRow = (id) => setScanResults(prev => prev.map(r => r.id === id ? { ...r, selected: !r.selected } : r));
+  const selected = scanResults.filter(r => r.selected);
+  return (
+    <div className="form-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="form-modal scan-modal">
+        <div className="form-title">Scan Sign-in Sheet</div>
+        {scanStatus !== "done" && (
+          <>
+            <div style={{ fontSize: 13, color: "#6b7c6a", marginBottom: 14 }}>
+              Take a photo of your open house sign-in sheet or choose an existing photo. Works best with clearly printed block letters in good lighting.
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleFile} />
+            {!scanImage && (
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn-primary" onClick={() => fileRef.current.click()}>📷 Take / Choose Photo</button>
+                <button className="btn-secondary" onClick={onClose}>Cancel</button>
+              </div>
+            )}
+            {scanImage && (
+              <>
+                <img src={scanImage} className="scan-preview" alt="Sign-in sheet preview" />
+                {scanStatus === "idle" && (
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button className="btn-primary" onClick={runOcr}>Scan Now</button>
+                    <button className="btn-secondary" onClick={() => fileRef.current.click()}>Retake Photo</button>
+                    <button className="btn-secondary" onClick={onClose}>Cancel</button>
+                  </div>
+                )}
+                {scanStatus === "scanning" && (
+                  <>
+                    <div style={{ fontSize: 13, color: "#6b7c6a" }}>Scanning… {scanProgress}%</div>
+                    <div className="scan-progress"><div className="scan-progress-bar" style={{ width: scanProgress + "%" }} /></div>
+                  </>
+                )}
+                {scanStatus === "error" && <div style={{ color: "#993C1D", fontSize: 13 }}>Scan failed. Please try again with better lighting or a clearer photo.</div>}
+              </>
+            )}
+          </>
+        )}
+        {scanStatus === "done" && (
+          <>
+            <div style={{ fontSize: 13, color: "#6b7c6a", marginBottom: 12 }}>
+              Review and correct the entries below, then import. Uncheck any row to skip it.
+            </div>
+            {scanResults.length === 0 && <div className="empty-state" style={{ padding: "1.5rem" }}>No contacts detected. Try a clearer photo with better lighting.</div>}
+            {scanResults.length > 0 && (
+              <>
+                <div className="scan-header"><span/><span>Name</span><span>Phone</span><span>Email</span><span>Comments</span></div>
+                <div style={{ maxHeight: 340, overflowY: "auto", marginBottom: 14 }}>
+                  {scanResults.map(r => (
+                    <div key={r.id} className="scan-row">
+                      <input type="checkbox" checked={r.selected} onChange={() => toggleRow(r.id)} />
+                      <input value={r.name} onChange={e => updateRow(r.id, "name", e.target.value)} placeholder="Name" />
+                      <input value={r.phone} onChange={e => updateRow(r.id, "phone", e.target.value)} placeholder="Phone" />
+                      <input value={r.email} onChange={e => updateRow(r.id, "email", e.target.value)} placeholder="Email" />
+                      <input value={r.comments} onChange={e => updateRow(r.id, "comments", e.target.value)} placeholder="Comments" />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {selected.length > 0 && <button className="btn-primary" onClick={() => onImport(selected)}>Import {selected.length} Contact{selected.length !== 1 ? "s" : ""}</button>}
+              <button className="btn-secondary" onClick={() => { setScanStatus("idle"); setScanImage(null); setScanResults([]); }}>Scan Again</button>
+              <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

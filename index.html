@@ -179,7 +179,7 @@ function RealtorCRM() {
   const [calMonth, setCalMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventClient, setEventClient] = useState(null);
-  const [eventData, setEventData] = useState({ date: todayStr, time: "10:00", title: "", type: "Showing" });
+  const [eventData, setEventData] = useState({ date: todayStr, time: "10:00", title: "", type: "Showing", selectedClientId: "" });
   const [detailClient, setDetailClient] = useState(null);
   const [contractors, setContractors] = useState(() => {
     try {
@@ -215,6 +215,21 @@ function RealtorCRM() {
   };
   const openAddContractor = () => { setContractorForm({ id: "", name: "", company: "", trade: "Roofing", phone: "", email: "", notes: "", rating: 5 }); setEditContractor(null); setShowContractorForm(true); };
   const openEditContractor = (ct) => { setContractorForm({ ...ct }); setEditContractor(ct); setShowContractorForm(true); };
+  const [calEvents, setCalEvents] = useState(() => {
+    try {
+      const saved = localStorage.getItem("jk_crm_cal_events");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const saveCalEvents = (list) => {
+    try { localStorage.setItem("jk_crm_cal_events", JSON.stringify(list)); } catch {}
+  };
+  const removeCalEvent = (evId) => {
+    const list = calEvents.filter(e => e.id !== evId);
+    setCalEvents(list);
+    saveCalEvents(list);
+  };
+
   const submitContractor = () => {
     if (!contractorForm.name.trim()) return;
     upsertContractor(contractorForm);
@@ -248,11 +263,19 @@ function RealtorCRM() {
     if (detailClient?.id === formData.id) setDetailClient({ ...formData, isPast });
   };
   const addEvent = () => {
-    if (!eventData.title || !eventClient) return;
-    const ev = { ...eventData, id: "ev" + Date.now() };
-    const updated = { ...eventClient, events: [...(eventClient.events || []), ev] };
-    upsertClient(updated);
-    if (detailClient?.id === eventClient.id) setDetailClient(updated);
+    if (!eventData.title) return;
+    const { selectedClientId, ...evFields } = eventData;
+    const ev = { ...evFields, id: "ev" + Date.now() };
+    const targetClient = eventClient || (selectedClientId ? clients.find(x => x.id === selectedClientId) : null);
+    if (targetClient) {
+      const updated = { ...targetClient, events: [...(targetClient.events || []), ev] };
+      upsertClient(updated);
+      if (detailClient?.id === targetClient.id) setDetailClient(updated);
+    } else {
+      const list = [...calEvents, ev];
+      setCalEvents(list);
+      saveCalEvents(list);
+    }
     setShowEventForm(false);
   };
   const removeEvent = (clientId, evId) => {
@@ -290,7 +313,7 @@ function RealtorCRM() {
         <div className="crm-body">
           {tab === "Dashboard" && <Dashboard clients={clients} activeClients={activeClients} pastClients={pastClients} todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} totalClosed={totalClosed} totalClosedVal={totalClosedVal} openAdd={openAdd} setTab={setTab} setDetailClient={setDetailClient} setFilterStage={setFilterStage} />}
           {tab === "Clients" && <ClientsTab clients={activeClients} search={search} setSearch={setSearch} filterStage={filterStage} setFilterStage={setFilterStage} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openAdd={openAdd} openEdit={openEdit} deleteClient={deleteClient} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} />}
-          {tab === "Calendar" && <CalendarTab clients={clients} calMonth={calMonth} setCalMonth={setCalMonth} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} removeEvent={removeEvent} />}
+          {tab === "Calendar" && <CalendarTab clients={clients} calMonth={calMonth} setCalMonth={setCalMonth} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} removeEvent={removeEvent} calEvents={calEvents} removeCalEvent={removeCalEvent} openAddEvent={() => { setEventClient(null); setEventData({ date: todayStr, time: "10:00", title: "", type: "Showing", selectedClientId: "" }); setShowEventForm(true); }} />}
           {tab === "Past Clients" && <PastClientsTab clients={pastClients} search={search} setSearch={setSearch} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openEdit={openEdit} setDetailClient={setDetailClient} />}
           {tab === "Daily Briefing" && <DailyBriefing todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} activeClients={activeClients} setDetailClient={setDetailClient} setTab={setTab} />}
           {tab === "Contractors" && <ContractorsTab contractors={contractors} openAdd={openAddContractor} openEdit={openEditContractor} deleteContractor={deleteContractor} />}
@@ -363,11 +386,20 @@ function RealtorCRM() {
         </div>
       )}
 
-      {showEventForm && eventClient && (
+      {showEventForm && (
         <div className="form-overlay" onClick={e => e.target === e.currentTarget && setShowEventForm(false)}>
           <div className="form-modal" style={{ maxWidth: 400 }}>
             <div className="form-title">Add Event</div>
-            <div style={{ fontSize: 13, color: "#6b7c6a", marginBottom: 16 }}>For: <strong>{eventClient.name}</strong></div>
+            {eventClient && <div style={{ fontSize: 13, color: "#6b7c6a", marginBottom: 16 }}>For: <strong>{eventClient.name}</strong></div>}
+            {!eventClient && (
+              <div className="form-row">
+                <label className="form-label">Client (optional)</label>
+                <select className="form-input" value={eventData.selectedClientId} onChange={e => setEventData(p => ({ ...p, selectedClientId: e.target.value }))}>
+                  <option value="">General / No Client</option>
+                  {clients.filter(c => !c.isPast).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="form-row">
               <label className="form-label">Event Title</label>
               <input className="form-input" value={eventData.title} onChange={e => setEventData(p => ({ ...p, title: e.target.value }))} placeholder="Showing, meeting, deadline…" />
@@ -630,13 +662,16 @@ function ClientsTab({ clients, search, setSearch, filterStage, setFilterStage, f
   );
 }
 
-function CalendarTab({ clients, calMonth, setCalMonth, setDetailClient, setEventClient, setShowEventForm, removeEvent }) {
+function CalendarTab({ clients, calMonth, setCalMonth, setDetailClient, setEventClient, setShowEventForm, removeEvent, calEvents, removeCalEvent, openAddEvent }) {
   const year = calMonth.getFullYear();
   const month = calMonth.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrev = new Date(year, month, 0).getDate();
-  const allEvents = clients.flatMap(c => (c.events || []).map(e => ({ ...e, clientName: c.name, clientId: c.id })));
+  const allEvents = [
+    ...clients.flatMap(c => (c.events || []).map(e => ({ ...e, clientName: c.name, clientId: c.id }))),
+    ...(calEvents || []).map(e => ({ ...e, clientName: "General", isGeneral: true })),
+  ];
   const eventsOnDay = (d) => {
     const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     return allEvents.filter(e => e.date === ds);
@@ -654,6 +689,7 @@ function CalendarTab({ clients, calMonth, setCalMonth, setDetailClient, setEvent
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
         <div><div className="section-head">Calendar</div><div className="section-sub">{calMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</div></div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-primary" onClick={openAddEvent}>+ Add Event</button>
           <button className="btn-secondary" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>← Prev</button>
           <button className="btn-secondary" onClick={() => setCalMonth(new Date(year, month + 1, 1))}>Next →</button>
         </div>
@@ -684,16 +720,20 @@ function CalendarTab({ clients, calMonth, setCalMonth, setDetailClient, setEvent
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, marginBottom: 10 }}>Upcoming Events</div>
             {upcomingAll.length === 0 && <div style={{ fontSize: 12, color: "#9a9588" }}>No upcoming events.</div>}
             {upcomingAll.map(ev => (
-              <div key={ev.id} style={{ padding: "7px 0", borderBottom: "1px solid #f0ece3", fontSize: 12 }}>
-                <div style={{ fontWeight: 500 }}>{ev.title}</div>
-                <div style={{ color: "#9a9588" }}>{fmtDate(ev.date)} {ev.time && `· ${ev.time}`}</div>
-                <div style={{ color: "#6b7c6a" }}>{ev.clientName}</div>
+              <div key={ev.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid #f0ece3", fontSize: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 500 }}>{ev.title}</div>
+                  <div style={{ color: "#9a9588" }}>{fmtDate(ev.date)} {ev.time && `· ${ev.time}`}</div>
+                  <div style={{ color: "#6b7c6a" }}>{ev.clientName}</div>
+                </div>
+                <button onClick={() => ev.isGeneral ? removeCalEvent(ev.id) : removeEvent(ev.clientId, ev.id)} style={{ background: "none", border: "none", color: "#c0a080", fontSize: 15, cursor: "pointer", paddingLeft: 6 }}>×</button>
               </div>
             ))}
           </div>
           <div className="card-sm">
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, marginBottom: 10 }}>Add Event</div>
-            <div style={{ fontSize: 12, color: "#6b7c6a" }}>Select a client from the Clients tab to add an event.</div>
+            <div style={{ fontSize: 12, color: "#6b7c6a", marginBottom: 10 }}>Use the button above to add any event — open houses, inspections, or general reminders.</div>
+            <button className="btn-primary" style={{ width: "100%", fontSize: 12 }} onClick={openAddEvent}>+ Add Event</button>
           </div>
         </div>
       </div>

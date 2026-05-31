@@ -39,7 +39,14 @@ const AVATAR_COLORS = [
   { bg: "#EAF3DE", text: "#27500A" },
   { bg: "#FBEAF0", text: "#72243E" },
 ];
-const TABS = ["Dashboard", "Clients", "Calendar", "Past Clients", "Daily Briefing"];
+const TABS = ["Dashboard", "Clients", "Calendar", "Past Clients", "Daily Briefing", "Contractors"];
+const CONTRACTOR_TRADES = ["Roofing", "Plumbing", "HVAC", "Electrical", "Appliances", "Inspection", "Foundation", "Painting", "Landscaping", "Pest Control", "Windows & Doors", "Flooring", "General Handyman", "Other"];
+const SEED_CONTRACTORS = [
+  { id: "ct1", name: "Mike Torres", company: "Torres Roofing Co.", trade: "Roofing", phone: "214-555-0133", email: "mike@torresroofing.com", notes: "Reliable, does great work. 10% referral discount.", rating: 5 },
+  { id: "ct2", name: "Dave Pham", company: "Pham Plumbing", trade: "Plumbing", phone: "972-555-0277", email: "dave@phamplumbing.com", notes: "Fast response, fair pricing.", rating: 4 },
+  { id: "ct3", name: "Carol Simmons", company: "Simmons Home Inspection", trade: "Inspection", phone: "469-555-0390", email: "carol@simmonsinspect.com", notes: "Very thorough. Available weekends.", rating: 5 },
+  { id: "ct4", name: "Ray Nguyen", company: "Cool Air HVAC", trade: "HVAC", phone: "214-555-0418", email: "ray@coolair.com", notes: "Great for tune-ups and emergency calls.", rating: 4 },
+];
 const today = new Date();
 const todayStr = today.toISOString().split("T")[0];
 function getInitials(name) {
@@ -174,10 +181,45 @@ function RealtorCRM() {
   const [eventClient, setEventClient] = useState(null);
   const [eventData, setEventData] = useState({ date: todayStr, time: "10:00", title: "", type: "Showing" });
   const [detailClient, setDetailClient] = useState(null);
+  const [contractors, setContractors] = useState(() => {
+    try {
+      const saved = localStorage.getItem("jk_crm_contractors");
+      return saved ? JSON.parse(saved) : SEED_CONTRACTORS;
+    } catch { return SEED_CONTRACTORS; }
+  });
+  const [showContractorForm, setShowContractorForm] = useState(false);
+  const [editContractor, setEditContractor] = useState(null);
+  const [contractorForm, setContractorForm] = useState({ id: "", name: "", company: "", trade: "Roofing", phone: "", email: "", notes: "", rating: 5 });
 
   const saveToStorage = useCallback((list) => {
     try { localStorage.setItem("jk_crm_clients", JSON.stringify(list)); } catch {}
   }, []);
+
+  const saveContractors = (list) => {
+    try { localStorage.setItem("jk_crm_contractors", JSON.stringify(list)); } catch {}
+  };
+  const upsertContractor = (ct) => {
+    let list;
+    if (ct.id) {
+      list = contractors.map(x => x.id === ct.id ? ct : x);
+    } else {
+      list = [{ ...ct, id: "ct" + Date.now() }, ...contractors];
+    }
+    setContractors(list);
+    saveContractors(list);
+  };
+  const deleteContractor = (id) => {
+    const list = contractors.filter(x => x.id !== id);
+    setContractors(list);
+    saveContractors(list);
+  };
+  const openAddContractor = () => { setContractorForm({ id: "", name: "", company: "", trade: "Roofing", phone: "", email: "", notes: "", rating: 5 }); setEditContractor(null); setShowContractorForm(true); };
+  const openEditContractor = (ct) => { setContractorForm({ ...ct }); setEditContractor(ct); setShowContractorForm(true); };
+  const submitContractor = () => {
+    if (!contractorForm.name.trim()) return;
+    upsertContractor(contractorForm);
+    setShowContractorForm(false);
+  };
 
   const upsertClient = (c) => {
     let list;
@@ -251,6 +293,7 @@ function RealtorCRM() {
           {tab === "Calendar" && <CalendarTab clients={clients} calMonth={calMonth} setCalMonth={setCalMonth} setDetailClient={setDetailClient} setEventClient={setEventClient} setShowEventForm={setShowEventForm} removeEvent={removeEvent} />}
           {tab === "Past Clients" && <PastClientsTab clients={pastClients} search={search} setSearch={setSearch} filterAgent={filterAgent} setFilterAgent={setFilterAgent} openEdit={openEdit} setDetailClient={setDetailClient} />}
           {tab === "Daily Briefing" && <DailyBriefing todayEvents={todayEvents} upcomingEvents={upcomingEvents} overdueFollowUp={overdueFollowUp} newLeads={newLeads} activeClients={activeClients} setDetailClient={setDetailClient} setTab={setTab} />}
+          {tab === "Contractors" && <ContractorsTab contractors={contractors} openAdd={openAddContractor} openEdit={openEditContractor} deleteContractor={deleteContractor} />}
         </div>
       </div>
 
@@ -348,6 +391,52 @@ function RealtorCRM() {
             <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
               <button className="btn-primary" onClick={addEvent}>Add Event</button>
               <button className="btn-secondary" onClick={() => setShowEventForm(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showContractorForm && (
+        <div className="form-overlay" onClick={e => e.target === e.currentTarget && setShowContractorForm(false)}>
+          <div className="form-modal">
+            <div className="form-title">{editContractor ? "Edit Contractor" : "Add Contractor"}</div>
+            <div className="form-grid">
+              <div className="form-row">
+                <label className="form-label">Name *</label>
+                <input className="form-input" value={contractorForm.name} onChange={e => setContractorForm(p => ({ ...p, name: e.target.value }))} placeholder="Contact name" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Company</label>
+                <input className="form-input" value={contractorForm.company} onChange={e => setContractorForm(p => ({ ...p, company: e.target.value }))} placeholder="Business name" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Trade / Specialty</label>
+                <select className="form-input" value={contractorForm.trade} onChange={e => setContractorForm(p => ({ ...p, trade: e.target.value }))}>
+                  {CONTRACTOR_TRADES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Rating</label>
+                <select className="form-input" value={contractorForm.rating} onChange={e => setContractorForm(p => ({ ...p, rating: Number(e.target.value) }))}>
+                  {[5,4,3,2,1].map(r => <option key={r} value={r}>{"★".repeat(r)}{"☆".repeat(5-r)}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label">Phone</label>
+                <input className="form-input" value={contractorForm.phone} onChange={e => setContractorForm(p => ({ ...p, phone: e.target.value }))} placeholder="214-555-0000" />
+              </div>
+              <div className="form-row">
+                <label className="form-label">Email</label>
+                <input className="form-input" value={contractorForm.email} onChange={e => setContractorForm(p => ({ ...p, email: e.target.value }))} placeholder="contractor@email.com" />
+              </div>
+            </div>
+            <div className="form-row">
+              <label className="form-label">Notes</label>
+              <textarea className="form-input" value={contractorForm.notes} onChange={e => setContractorForm(p => ({ ...p, notes: e.target.value }))} placeholder="Pricing, availability, referral info…" />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <button className="btn-primary" onClick={submitContractor}>{editContractor ? "Save Changes" : "Add Contractor"}</button>
+              <button className="btn-secondary" onClick={() => setShowContractorForm(false)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -715,6 +804,77 @@ function DailyBriefing({ todayEvents, upcomingEvents, overdueFollowUp, newLeads,
             <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f0ece3", fontSize: 13 }}>
               <span className="stage-pill" style={{ background: sc.bg, color: sc.text }}>{s}</span>
               <span style={{ fontWeight: 600 }}>{count} client{count !== 1 ? "s" : ""}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const TRADE_COLORS = {
+  "Roofing":        { bg: "#FAECE7", text: "#993C1D" },
+  "Plumbing":       { bg: "#E6F1FB", text: "#185FA5" },
+  "HVAC":           { bg: "#EAF3DE", text: "#3B6D11" },
+  "Electrical":     { bg: "#FAEEDA", text: "#854F0B" },
+  "Appliances":     { bg: "#EEEDFE", text: "#534AB7" },
+  "Inspection":     { bg: "#E1F5EE", text: "#0F6E56" },
+  "Foundation":     { bg: "#FAECE7", text: "#6B2200" },
+  "Painting":       { bg: "#FBEAF0", text: "#72243E" },
+  "Landscaping":    { bg: "#EAF3DE", text: "#27500A" },
+  "Pest Control":   { bg: "#FAEEDA", text: "#633806" },
+  "Windows & Doors":{ bg: "#E6F1FB", text: "#0C447C" },
+  "Flooring":       { bg: "#EEEDFE", text: "#3C3489" },
+  "General Handyman":{ bg: "#F1EFE8", text: "#5F5E5A" },
+  "Other":          { bg: "#F1EFE8", text: "#5F5E5A" },
+};
+
+function ContractorsTab({ contractors, openAdd, openEdit, deleteContractor }) {
+  const [search, setSearch] = React.useState("");
+  const [filterTrade, setFilterTrade] = React.useState("All");
+  const filtered = contractors.filter(ct => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || ct.name.toLowerCase().includes(q) || ct.company?.toLowerCase().includes(q) || ct.trade.toLowerCase().includes(q);
+    const matchTrade = filterTrade === "All" || ct.trade === filterTrade;
+    return matchSearch && matchTrade;
+  });
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+        <div>
+          <div className="section-head">Contractors</div>
+          <div className="section-sub">Trusted vendors for repairs, inspections & home services</div>
+        </div>
+        <button className="btn-primary" onClick={openAdd}>+ Add Contractor</button>
+      </div>
+      <div className="search-row">
+        <input className="search-input" placeholder="Search by name, company, trade…" value={search} onChange={e => setSearch(e.target.value)} />
+        <select className="filter-sel" value={filterTrade} onChange={e => setFilterTrade(e.target.value)}>
+          <option value="All">All trades</option>
+          {CONTRACTOR_TRADES.map(t => <option key={t}>{t}</option>)}
+        </select>
+      </div>
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        {filtered.length === 0 && <div className="empty-state">No contractors found.</div>}
+        {filtered.map((ct, i) => {
+          const tc = TRADE_COLORS[ct.trade] || TRADE_COLORS["Other"];
+          const av = avatarColor(ct.name);
+          return (
+            <div key={ct.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: i < filtered.length - 1 ? "1px solid #f0ece3" : "none" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#faf7f0"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}>
+              <div className="avatar" style={{ background: av.bg, color: av.text }}>{getInitials(ct.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{ct.name}{ct.company && <span style={{ fontSize: 12, color: "#6b7c6a", fontWeight: 400 }}> · {ct.company}</span>}</div>
+                <div style={{ fontSize: 11, color: "#9a9588", marginTop: 2 }}>{ct.phone || "—"}{ct.email && ` · ${ct.email}`}</div>
+                {ct.notes && <div style={{ fontSize: 11, color: "#6b7c6a", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 400 }}>{ct.notes}</div>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                <span style={{ fontSize: 12, color: "#C8A84B", letterSpacing: 1 }}>{"★".repeat(ct.rating)}{"☆".repeat(5 - ct.rating)}</span>
+                <span className="stage-pill" style={{ background: tc.bg, color: tc.text }}>{ct.trade}</span>
+                <button style={{ background: "none", border: "none", fontSize: 13, color: "#9a9588", cursor: "pointer", padding: "2px 6px" }} onClick={() => openEdit(ct)}>✏️</button>
+                <button style={{ background: "none", border: "none", fontSize: 13, color: "#c0a080", cursor: "pointer", padding: "2px 6px" }} onClick={() => { if (window.confirm("Delete this contractor?")) deleteContractor(ct.id); }}>🗑</button>
+              </div>
             </div>
           );
         })}

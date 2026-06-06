@@ -8,6 +8,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
@@ -18,6 +20,16 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
+firebase.initializeApp({
+  apiKey: "AIzaSyCVYNKP0PW0mKJqFebgQ0yTfut5VkOlclw",
+  authDomain: "jkrealtors-7b569.firebaseapp.com",
+  projectId: "jkrealtors-7b569",
+  storageBucket: "jkrealtors-7b569.firebasestorage.app",
+  messagingSenderId: "894915765803",
+  appId: "1:894915765803:web:0f6b4441b0cad228ebac6e"
+});
+const db = firebase.firestore();
+
 const { useState, useEffect, useCallback } = React;
 const AGENTS = ["Julie", "Karen", "Both"];
 const STAGES = ["New Lead", "Contacted", "Showing", "Offer", "Under Contract", "Closed", "Lost"];
@@ -173,12 +185,8 @@ const CSS = `
 
 function RealtorCRM() {
   const [tab, setTab] = useState("Dashboard");
-  const [clients, setClients] = useState(() => {
-    try {
-      const saved = localStorage.getItem("jk_crm_clients");
-      return saved ? JSON.parse(saved) : SEED_CLIENTS;
-    } catch { return SEED_CLIENTS; }
-  });
+  const [dbLoaded, setDbLoaded] = useState(false);
+  const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editClient, setEditClient] = useState(null);
   const [formData, setFormData] = useState(emptyClient());
@@ -195,54 +203,20 @@ function RealtorCRM() {
   const [scanStatus, setScanStatus] = useState("idle");
   const [scanProgress, setScanProgress] = useState(0);
   const [scanResults, setScanResults] = useState([]);
-  const [contractors, setContractors] = useState(() => {
-    try {
-      const saved = localStorage.getItem("jk_crm_contractors");
-      return saved ? JSON.parse(saved) : SEED_CONTRACTORS;
-    } catch { return SEED_CONTRACTORS; }
-  });
+  const [contractors, setContractors] = useState([]);
   const [showContractorForm, setShowContractorForm] = useState(false);
   const [editContractor, setEditContractor] = useState(null);
   const [contractorForm, setContractorForm] = useState({ id: "", name: "", company: "", trade: "Roofing", phone: "", email: "", notes: "", rating: 5 });
 
-  const saveToStorage = useCallback((list) => {
-    try { localStorage.setItem("jk_crm_clients", JSON.stringify(list)); } catch {}
-  }, []);
-
-  const saveContractors = (list) => {
-    try { localStorage.setItem("jk_crm_contractors", JSON.stringify(list)); } catch {}
-  };
   const upsertContractor = (ct) => {
-    let list;
-    if (ct.id) {
-      list = contractors.map(x => x.id === ct.id ? ct : x);
-    } else {
-      list = [{ ...ct, id: "ct" + Date.now() }, ...contractors];
-    }
-    setContractors(list);
-    saveContractors(list);
+    const data = ct.id ? ct : { ...ct, id: "ct" + Date.now() };
+    db.collection("contractors").doc(data.id).set(data);
   };
-  const deleteContractor = (id) => {
-    const list = contractors.filter(x => x.id !== id);
-    setContractors(list);
-    saveContractors(list);
-  };
+  const deleteContractor = (id) => { db.collection("contractors").doc(id).delete(); };
   const openAddContractor = () => { setContractorForm({ id: "", name: "", company: "", trade: "Roofing", phone: "", email: "", notes: "", rating: 5 }); setEditContractor(null); setShowContractorForm(true); };
   const openEditContractor = (ct) => { setContractorForm({ ...ct }); setEditContractor(ct); setShowContractorForm(true); };
-  const [calEvents, setCalEvents] = useState(() => {
-    try {
-      const saved = localStorage.getItem("jk_crm_cal_events");
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-  const saveCalEvents = (list) => {
-    try { localStorage.setItem("jk_crm_cal_events", JSON.stringify(list)); } catch {}
-  };
-  const removeCalEvent = (evId) => {
-    const list = calEvents.filter(e => e.id !== evId);
-    setCalEvents(list);
-    saveCalEvents(list);
-  };
+  const [calEvents, setCalEvents] = useState([]);
+  const removeCalEvent = (evId) => { db.collection("calEvents").doc(evId).delete(); };
 
   const submitContractor = () => {
     if (!contractorForm.name.trim()) return;
@@ -250,21 +224,53 @@ function RealtorCRM() {
     setShowContractorForm(false);
   };
 
-  const upsertClient = (c) => {
-    let list;
-    if (c.id) {
-      list = clients.map(x => x.id === c.id ? c : x);
-    } else {
-      const nc = { ...c, id: "c" + Date.now() };
-      list = [nc, ...clients];
+  const seededRef = React.useRef(false);
+  useEffect(() => {
+    const unsub = db.collection("clients").onSnapshot(snap => {
+      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      if (data.length === 0 && !seededRef.current) {
+        seededRef.current = true;
+        SEED_CLIENTS.forEach(c => db.collection("clients").doc(c.id).set(c));
+      } else {
+        setClients(data);
+        setDbLoaded(true);
+      }
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("contractors").onSnapshot(snap => {
+      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      if (data.length === 0 && !seededRef.current) {
+        SEED_CONTRACTORS.forEach(c => db.collection("contractors").doc(c.id).set(c));
+      } else {
+        setContractors(data);
+      }
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = db.collection("calEvents").onSnapshot(snap => {
+      setCalEvents(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (detailClient) {
+      const updated = clients.find(c => c.id === detailClient.id);
+      if (updated) setDetailClient(updated);
     }
-    setClients(list);
-    saveToStorage(list);
+  }, [clients]);
+
+  const upsertClient = (c) => {
+    const data = c.id ? c : { ...c, id: "c" + Date.now() };
+    db.collection("clients").doc(data.id).set(data);
   };
   const deleteClient = (id) => {
-    const list = clients.filter(x => x.id !== id);
-    setClients(list);
-    saveToStorage(list);
+    db.collection("clients").doc(id).delete();
     if (detailClient?.id === id) setDetailClient(null);
   };
   const openAdd = () => { setFormData(emptyClient()); setEditClient(null); setShowForm(true); };
@@ -286,9 +292,7 @@ function RealtorCRM() {
       upsertClient(updated);
       if (detailClient?.id === targetClient.id) setDetailClient(updated);
     } else {
-      const list = [...calEvents, ev];
-      setCalEvents(list);
-      saveCalEvents(list);
+      db.collection("calEvents").doc(ev.id).set(ev);
     }
     setShowEventForm(false);
   };
@@ -310,6 +314,13 @@ function RealtorCRM() {
   const newLeads = activeClients.filter(c => c.stage === "New Lead");
   const totalClosed = pastClients.filter(c => c.stage === "Closed").length;
   const totalClosedVal = pastClients.filter(c => c.stage === "Closed" && c.salePrice).reduce((s, c) => s + Number(c.salePrice), 0);
+
+  if (!dbLoaded) return (
+    <div style={{ minHeight: "100vh", background: "#FAFAF8", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, color: "#1C2B1A" }}>Julie & Karen</div>
+      <div style={{ fontSize: 13, color: "#6b7c6a" }}>Connecting to database…</div>
+    </div>
+  );
 
   return (
     <div style={{ fontFamily: "'Source Sans 3', sans-serif", minHeight: "100vh", background: "#FAFAF8", color: "#1a1a18" }}>

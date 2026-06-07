@@ -269,6 +269,27 @@ function RealtorCRM() {
     }
   }, [clients]);
 
+  const downloadBackup = async () => {
+    const [clientsSnap, contractorsSnap, calEventsSnap] = await Promise.all([
+      db.collection("clients").get(),
+      db.collection("contractors").get(),
+      db.collection("calEvents").get(),
+    ]);
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      clients: clientsSnap.docs.map(d => ({ ...d.data(), id: d.id })),
+      contractors: contractorsSnap.docs.map(d => ({ ...d.data(), id: d.id })),
+      calEvents: calEventsSnap.docs.map(d => ({ ...d.data(), id: d.id })),
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `jkrealtor-backup-${todayStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const upsertClient = (c) => {
     const data = c.id ? c : { ...c, id: "c" + Date.now() };
     db.collection("clients").doc(data.id).set(data);
@@ -332,7 +353,10 @@ function RealtorCRM() {
       <div className="crm-root">
         <div className="crm-header">
           <div className="crm-logo">Julie & Karen<span>Real Estate Partners Â· Plano, TX</span></div>
-          <div style={{ fontSize: 11, color: "#8BC99A" }}>â— Live</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button onClick={downloadBackup} style={{ background: "none", border: "1px solid #4a6b48", borderRadius: 5, color: "#8BC99A", fontSize: 11, padding: "4px 10px", cursor: "pointer", letterSpacing: "0.04em" }}>⬇ Backup</button>
+            <div style={{ fontSize: 11, color: "#8BC99A" }}>â— Live</div>
+          </div>
         </div>
         <div className="crm-tabs">
           {TABS.map(t => (
